@@ -1,4 +1,4 @@
-## My Project
+## EKS Fargate Profile Management
 
 # Overview
 Through steps discussed in the sections below, you can automate the creation of infrastructure that includes a pipeline connected to a CodeCommit source repository, picks up new / changed CloudFormation (CF) template from the repository and deploys the template into the environment.
