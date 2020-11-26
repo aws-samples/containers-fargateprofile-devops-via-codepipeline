@@ -1,0 +1,64 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Metadata": {
+        "Generator": "former2",
+        "AWS::CloudFormation::Designer": {
+            "c0a1066f-6a4c-4c77-a31c-5c90c4ae2ce2": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": -650,
+                    "y": -440
+                },
+                "z": 0,
+                "embeds": []
+            }
+        }
+    },
+    "Description": "",
+    "Parameters": {
+        "Source": {
+            "Type": "String",
+            "Default": "Former"
+        }
+    },
+    "Resources": {
+        "EKSFP2WXUH": {
+            "Type": "AWS::EKS::FargateProfile",
+            "Properties": {
+                "ClusterName": "eksfargate1",
+                "FargateProfileName": "fargateprofile2",
+                "PodExecutionRoleArn": {
+                    "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/eksctl-demo-cluster-FargatePodExecutionRole-1U9UA0NHXES6F"
+                },
+                "Selectors": [
+                    {
+                        "Labels": [
+                            {
+                                "Key": "apptype",
+                                "Value": "dempapp"
+                            }
+                        ],
+                        "Namespace": "demo2"
+                    }
+                ],
+                "Subnets": [
+                    "subnet-ec25c494"
+                ],
+                "Tags": [
+                    {
+                        "Key": "name",
+                        "Value": "fgtag"
+                    }
+                ]
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "c0a1066f-6a4c-4c77-a31c-5c90c4ae2ce2"
+                }
+            }
+        }
+    }
+}

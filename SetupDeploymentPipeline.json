@@ -1,0 +1,495 @@
+{
+  "Parameters": {
+    "RepositoryName": {
+      "Description": "CodeComit Repository Name",
+      "Type": "String",
+      "Default": "FargateRepo"
+    },
+    "BranchName": {
+      "Description": "CodeCommit Branch Name",
+      "Type": "String",
+      "Default": "master"
+    },
+    "CodePipelineArtifactStoreBucket": {
+      "Description": "s3 Bucket Name",
+      "Type": "String",
+      "Default": "fargatepipelinebucket"
+    },
+    "FPTemplateName": {
+      "Description": "Fargate Profile CloudFormation Template File Name",
+      "Type": "String",
+      "Default": "FargateProfile.json"
+    }
+  },
+  "Resources": {
+    "MyRepo": {
+        "Type": "AWS::CodeCommit::Repository",
+        "Properties": {
+            "RepositoryName":{ 
+              "Ref": "RepositoryName" 
+            },
+            "RepositoryDescription": "Fargate profile repository",
+            "Code": {
+                "S3": {
+                  "Bucket": { 
+                    "Ref": "CodePipelineArtifactStoreBucket"
+                  },
+                  "Key": { 
+                      "Fn::Join": [
+                      "",
+                      [
+                        "",
+                        {
+                           "Ref": "FPTemplateName"
+                        },
+                        ".zip"
+                      ]
+                    ]
+                  }
+                }
+            }
+        }
+    },
+    "AmazonCloudWatchEventRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "events.amazonaws.com"
+                ]
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "cwe-pipeline-execution",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "codepipeline:StartPipelineExecution",
+                  "Resource": {
+                    "Fn::Join": [
+                      "",
+                      [
+                        "arn:aws:codepipeline:",
+                        {
+                          "Ref": "AWS::Region"
+                        },
+                        ":",
+                        {
+                          "Ref": "AWS::AccountId"
+                        },
+                        ":",
+                        {
+                          "Ref": "AppPipeline"
+                        }
+                      ]
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "77a551e5-7adc-47fc-b0bc-af9e0cd81bd7"
+        }
+      }
+    },
+    "AmazonCloudWatchEventRule": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "EventPattern": {
+          "source": [
+            "aws.codecommit"
+          ],
+          "detail-type": [
+            "CodeCommit Repository State Change"
+          ],
+          "resources": [
+            {
+              "Fn::Join": [
+                "",
+                [
+                  "arn:aws:codecommit:",
+                  {
+                    "Ref": "AWS::Region"
+                  },
+                  ":",
+                  {
+                    "Ref": "AWS::AccountId"
+                  },
+                  ":",
+                  {
+                    "Ref": "RepositoryName"
+                  }
+                ]
+              ]
+            }
+          ],
+          "detail": {
+            "event": [
+              "referenceCreated",
+              "referenceUpdated"
+            ],
+            "referenceType": [
+              "branch"
+            ],
+            "referenceName": [
+              "master"
+            ]
+          }
+        },
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::Join": [
+                "",
+                [
+                  "arn:aws:codepipeline:",
+                  {
+                    "Ref": "AWS::Region"
+                  },
+                  ":",
+                  {
+                    "Ref": "AWS::AccountId"
+                  },
+                  ":",
+                  {
+                    "Ref": "AppPipeline"
+                  }
+                ]
+              ]
+            },
+            "RoleArn": {
+              "Fn::GetAtt": [
+                "AmazonCloudWatchEventRole",
+                "Arn"
+              ]
+            },
+            "Id": "codepipeline-AppPipeline"
+          }
+        ]
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "155c5298-d3a3-41ce-819c-c20ecc8cbed6"
+        }
+      }
+    },
+    "AppPipeline": {
+      "Type": "AWS::CodePipeline::Pipeline",
+      "Properties": {
+        "Name": "codecommit-events-pipeline",
+        "RoleArn": {
+          "Fn::GetAtt": [
+            "CodePipelineServiceRole",
+            "Arn"
+          ]
+        },
+        "Stages": [
+          {
+            "Name": "Source",
+            "Actions": [
+              {
+                "Name": "SourceAction",
+                "ActionTypeId": {
+                  "Category": "Source",
+                  "Owner": "AWS",
+                  "Version": 1,
+                  "Provider": "CodeCommit"
+                },
+                "OutputArtifacts": [
+                  {
+                    "Name": "SourceOutput"
+                  }
+                ],
+                "Configuration": {
+                  "BranchName": {
+                    "Ref": "BranchName"
+                  },
+                  "RepositoryName": {
+                    "Ref": "RepositoryName"
+                  },
+                  "PollForSourceChanges": false
+                },
+                "RunOrder": 1
+              }
+            ]
+          },
+          {
+            "Name": "Deployement",
+            "Actions": [
+              {
+                "Name": "ExecuteDeployment",
+                "ActionTypeId": {
+                  "Category": "Deploy",
+                  "Owner": "AWS",
+                  "Provider": "CloudFormation",
+                  "Version": "1"
+                },
+                "RunOrder": 1,
+                "Configuration": {
+                  "ActionMode": "REPLACE_ON_FAILURE",
+                  "Capabilities": "CAPABILITY_NAMED_IAM,CAPABILITY_IAM,CAPABILITY_AUTO_EXPAND",
+                  "RoleArn": {
+                    "Fn::GetAtt": [
+                      "CodePipelineServiceRole",
+                      "Arn"
+                    ]
+                  },
+                  "StackName": "FPDeployment",
+                  "TemplatePath": {
+                    "Fn::Join": [
+                      "",
+                      [
+                        "SourceOutput::",
+                        {
+                          "Ref": "FPTemplateName"
+                        },
+                        ""
+                      ]
+                    ]
+                 }
+                },
+                "OutputArtifacts": [],
+                "InputArtifacts": [
+                  {
+                    "Name": "SourceOutput"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "ArtifactStore": {
+          "Type": "S3",
+          "Location": {
+            "Ref": "CodePipelineArtifactStoreBucket"
+          }
+        }
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "d4687137-dccc-4e8c-9cc8-69af751257ad"
+        }
+      }
+    },
+    "CodePipelineServiceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "codepipeline.amazonaws.com",
+                  "ec2.amazonaws.com",
+                  "cloudformation.amazonaws.com"
+                ]
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "AWS-CodePipeline-Service-3",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "codecommit:CancelUploadArchive",
+                    "codecommit:GetBranch",
+                    "codecommit:GetCommit",
+                    "codecommit:GetUploadArchiveStatus",
+                    "codecommit:UploadArchive"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "codedeploy:CreateDeployment",
+                    "codedeploy:GetApplicationRevision",
+                    "codedeploy:GetDeployment",
+                    "codedeploy:GetDeploymentConfig",
+                    "codedeploy:RegisterApplicationRevision"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "lambda:InvokeFunction",
+                    "lambda:ListFunctions"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "iam:GetRole",
+                    "iam:GetInstanceProfile",
+                    "iam:RemoveRoleFromInstanceProfile",
+                    "iam:CreateRole",
+                    "iam:DeleteRole",
+                    "iam:AttachRolePolicy",
+                    "iam:PutRolePolicy",
+                    "iam:ListInstanceProfiles",
+                    "iam:AddRoleToInstanceProfile",
+                    "iam:ListInstanceProfilesForRole",
+                    "iam:PassRole",
+                    "iam:DetachRolePolicy",
+                    "iam:DeleteRolePolicy",
+                    "iam:GetRolePolicy"
+                    
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:*",
+                    "sns:*",
+                    "cloudformation:*",
+                    "eks:*"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Action": [
+                    "cloudformation:CreateStack",
+                    "cloudformation:DeleteStack",
+                    "cloudformation:DescribeStacks",
+                    "cloudformation:UpdateStack",
+                    "cloudformation:CreateChangeSet",
+                    "cloudformation:DeleteChangeSet",
+                    "cloudformation:DescribeChangeSet",
+                    "cloudformation:ExecuteChangeSet",
+                    "cloudformation:SetStackPolicy",
+                    "cloudformation:ValidateTemplate"
+                  ],
+                  "Resource": "*",
+                  "Effect": "Allow"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "76592d77-d7b7-492c-a901-f24f906735cb"
+        }
+      }
+    }
+  },
+  "Metadata": {
+    "AWS::CloudFormation::Designer": {
+      "76592d77-d7b7-492c-a901-f24f906735cb": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 60,
+          "y": 90
+        },
+        "z": 1,
+        "embeds": []
+      },
+      "da7af4b8-0be6-475c-94d9-a4e7912831b8": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 180,
+          "y": 90
+        },
+        "z": 1,
+        "embeds": []
+      },
+      "d4687137-dccc-4e8c-9cc8-69af751257ad": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 60,
+          "y": 210
+        },
+        "z": 1,
+        "embeds": []
+      },
+      "77a551e5-7adc-47fc-b0bc-af9e0cd81bd7": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 180,
+          "y": 210
+        },
+        "z": 1,
+        "embeds": []
+      },
+      "155c5298-d3a3-41ce-819c-c20ecc8cbed6": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 300,
+          "y": 90
+        },
+        "z": 1,
+        "embeds": []
+      },
+      "55c4a618-1508-435b-9253-3035c1e42b22": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 300,
+          "y": 210
+        },
+        "z": 1,
+        "embeds": [],
+        "isassociatedwith": [
+          "da7af4b8-0be6-475c-94d9-a4e7912831b8"
+        ]
+      },
+      "221c5053-4445-4190-a787-7fd3d2a97e70": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 72.5,
+          "y": -325.6666666666667
+        },
+        "z": 0
+      }
+    }
+  }
+}
